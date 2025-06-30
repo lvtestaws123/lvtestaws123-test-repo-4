@@ -1,0 +1,40 @@
+name: Test S3 Access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  s3-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::640168414907:role/github-oidc-role
+          aws-region: us-east-1
+
+      - name: Test S3 Access
+        env:
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          echo "Testing from $REPO"
+          
+          # Write to own path
+          echo "test content from $REPO" > test.txt
+          S3_PATH="$REPO/refs/heads/$BRANCH"
+          aws s3 cp test.txt "s3://test-github-oidc-bucket-20250625/$S3_PATH/test.txt"
+          
+          # List own path
+          echo "Listing own path:"
+          aws s3 ls "s3://test-github-oidc-bucket-20250625/$S3_PATH/"
+          
+          # Try to access another repo's path (should fail)
+          echo "Trying to access test-repo-2's path (should fail):"
+          aws s3 ls "s3://test-github-oidc-bucket-20250625/lvtestaws123/test-repo-2/refs/heads/main/" || echo "Access denied as expected"
+
+    
