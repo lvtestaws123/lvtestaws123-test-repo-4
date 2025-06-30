@@ -1,0 +1,72 @@
+name: Test S3 Access Comprehensive
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  s3-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::640168414907:role/github-oidc-role
+          aws-region: us-east-1
+          role-session-tags: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+
+      - name: Test S3 Access
+        env:
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          echo "=== Testing from $REPO ==="
+          echo ""
+          
+          echo "1. Testing access to own repository path:"
+          echo "----------------------------------------"
+          S3_PATH="$REPO/refs/heads/$BRANCH"
+          echo "Writing to own path: $S3_PATH"
+          echo "test content from $REPO" > test.txt
+          aws s3 cp test.txt "s3://test-github-oidc-bucket-20250625/$S3_PATH/test.txt"
+          echo "Listing own path:"
+          aws s3 ls "s3://test-github-oidc-bucket-20250625/$S3_PATH/"
+          echo ""
+          
+          echo "2. Testing access to other repositories:"
+          echo "--------------------------------------"
+          for i in {1..5}; do
+            TEST_REPO="lvtestaws123/lvtestaws123-test-repo-$i"
+            if [ "$TEST_REPO" != "$REPO" ]; then
+              echo "Attempting to access $TEST_REPO:"
+              echo "- Trying to list:"
+              aws s3 ls "s3://test-github-oidc-bucket-20250625/$TEST_REPO/refs/heads/main/" && echo "WARNING: Access allowed!" || echo "Access denied (expected)"
+              
+              echo "- Trying to write:"
+              echo "unauthorized test" > unauth.txt
+              aws s3 cp unauth.txt "s3://test-github-oidc-bucket-20250625/$TEST_REPO/refs/heads/main/unauth.txt" && echo "WARNING: Write allowed!" || echo "Write denied (expected)"
+              echo "----------------------------------------"
+            else
+              echo "Skipping $TEST_REPO (own repository)"
+              echo "----------------------------------------"
+            fi
+          done
+          
+          echo "3. Testing access with different branch:"
+          echo "--------------------------------------"
+          OTHER_BRANCH="develop"
+          echo "Trying to access own repo with branch $OTHER_BRANCH:"
+          OTHER_PATH="$REPO/refs/heads/$OTHER_BRANCH"
+          aws s3 ls "s3://test-github-oidc-bucket-20250625/$OTHER_PATH/" && echo "WARNING: Access allowed!" || echo "Access denied (expected)"
+          
+          echo "4. Testing access with invalid path:"
+          echo "--------------------------------------"
+          INVALID_PATH="$REPO/invalid/path"
+          echo "Trying to access invalid path: $INVALID_PATH"
+          aws s3 ls "s3://test-github-oidc-bucket-20250625/$INVALID_PATH/" && echo "WARNING: Access allowed!" || echo "Access denied (expected)"
+
+    
